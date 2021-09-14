@@ -4,7 +4,7 @@ name: Release
 on:
   push:
     tags:
-      - v4.*
+      - main
   workflow_dispatch: {}
 
 jobs:
@@ -95,7 +95,6 @@ jobs:
   release:
     name: Release
     runs-on: 'ubuntu-latest'
-    if: github.event_name == 'push'
     needs: [release-archive, release-binaries]
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
@@ -169,7 +168,7 @@ jobs:
         run: |
           tag=`basename ${{ github.ref }}`
           echo "CLAIR_VERSION=${tag}" >> $GITHUB_ENV
-          echo "TAG=quay.io/projectquay/clair:${tag#v}" >> $GITHUB_ENV
+          echo "TAG=pshub/clair_multiarch:${tag#v}" >> $GITHUB_ENV
           echo "QUAY_USER=projectquay+clair_github" >> $GITHUB_ENV
           echo "::add-mask::${{ secrets.QUAY_TOKEN }}"
       - name: Fetch Artifacts
@@ -177,16 +176,20 @@ jobs:
         id: download
         with:
           name: release
-      - name: Build Release Container
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@master
+        with:
+          platforms: all
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Build and Publish Release Container
         run: |
           d=$(mktemp -d)
           trap 'rm -rf "$d"' EXIT
           tar -xz -f ${{steps.download.outputs.download-path}}/clair.tar.gz --strip-components=1 -C "$d"
-          docker build --build-arg CLAIR_VERSION --tag "${TAG}" "$d"
-      - name: Publish Release Container
-        run: |
-          docker login -u "${QUAY_USER}" -p '${{ secrets.QUAY_TOKEN }}' quay.io
-          docker push "${TAG}"
+          docker login -u pshub -p dockerhubDOCKERHUB1#
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+          docker buildx build --push --platform linux/amd64,linux/arm64 --build-arg CLAIR_VERSION --tag "${TAG}" "$d"
 
   deploy-documentation:
     name: Deploy Documentation
